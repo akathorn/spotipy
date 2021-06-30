@@ -23,10 +23,10 @@ from spotipy.json_types import (Album, AlbumsResponse, Artist, ArtistsResponse,
                                 FeaturedPlaylistsResponse,
                                 FollowedArtistsResponse, Image,
                                 NewReleasesResponse, Page, PlayHistory,
-                                Playlist, PrivateUser, PublicUser,
-                                RecommendationGenresResponse, Recommendations,
-                                SavedAlbum, SavedEpisode, SavedShow,
-                                SavedTrack, SearchResponse, Show,
+                                Playlist, PlaylistTrack, PrivateUser,
+                                PublicUser, RecommendationGenresResponse,
+                                Recommendations, SavedAlbum, SavedEpisode,
+                                SavedShow, SavedTrack, SearchResponse, Show,
                                 ShowsResponse, SimplifiedAlbum,
                                 SimplifiedEpisode, SimplifiedPlaylist,
                                 SnapshotId, Track, TracksResponse)
@@ -639,7 +639,7 @@ class Spotify(object):
         offset: int = ...,
         market: Optional[str] = ...,
         additional_types: Iterable[Literal["track"]] = ...
-    ) -> Page[Track]: ...
+    ) -> Page[PlaylistTrack]: ...
 
     @overload
     def playlist_items(
@@ -661,7 +661,7 @@ class Spotify(object):
         offset: int = ...,
         market: Optional[str] = ...,
         additional_types: Iterable[Literal["track", "episode"]] = ...
-    ) -> Page[Union[Track, Episode]]: ...
+    ) -> Page[Union[PlaylistTrack, Episode]]: ...
 
     def playlist_items(
         self,
@@ -671,7 +671,7 @@ class Spotify(object):
         offset: int = 0,
         market: Optional[str] = None,
         additional_types: Iterable[Literal["track", "episode"]] = ("track", "episode")
-    ) -> Page[Union[Track, Episode]]:
+    ) -> Page[Union[PlaylistTrack, Episode]]:
         """ Get full details of the tracks and episodes of a playlist.
 
             Parameters:
