@@ -1,5 +1,5 @@
 import typing
-from typing import Any, Dict, KeysView, List, Optional, Type, Union
+from typing import Any, Callable, Dict, KeysView, List, Optional, Type, Union
 
 import typing_inspect
 
@@ -24,118 +24,136 @@ class Result:
         else:
             self.has_errors = False
 
+    def pprint(self, tabs: int = 0):
+        print("  " * tabs, f"[{self.label}]")
+        for error in self.error_messages:
+            print("  " * tabs, "-", error)
+        if isinstance(self.children, dict):
+            for field, sub_result in self.children.items():
+                if sub_result.has_errors:
+                    print("  " * tabs, field)
+                    sub_result.pprint(tabs+1)
+        elif self.children is not None:
+            if self.children.has_errors:
+                self.children.pprint(tabs+1)
 
-def match_type(value: Any, type_: Any) -> Result:
-    # TODO: match all values in a list instead of only the first one
-    # Basic types
-    errors: Optional[List[str]] = []
-    if type_ in [int, float, str, bool]:
+
+class TypeChecker:
+    def __init__(self) -> None:
+        pass
+
+    def match(self, value: Any, type_: Any) -> Result:
+        if type_ in [int, float, str, bool]:
+            return self.match_primitive(value, type_)
+        elif isinstance(value, dict) and isinstance(type_, dict):
+            return self.match_dict(value, type_)
+        elif typing_inspect.get_origin(type_) == list or typing_inspect.get_origin(type_) == List:
+            return self.match_list(value, typing_inspect.get_args(type_)[0])
+        elif typing_inspect.is_union_type(type_):
+            return self.match_union(value, type_)
+        elif typing_inspect.get_origin(type_) in (json_types.Page, json_types.CursorPage):
+            return self.match_page(value, type_)
+        elif typing_inspect.typed_dict_keys(type_):
+            return self.match_typeddict(value, type_)
+        else:
+            raise ValueError()
+
+    def match_primitive(self, value: Union[int, float, str, bool], type_: Any) -> Result:
         if not isinstance(value, type_):
-            errors = [f"{value}: expected type {type_} but got {type(value)}"]
-        return Result("basic type", errors)
+            Result("primitive", [f"{value}: expected type {type_} but got {type(value)}"])
+        return Result("primitive")
 
-    # Dicts
-    elif isinstance(value, dict) and isinstance(type_, dict):
-        v_fields, t_fields = value.keys(), type_.keys()
+    def match_list(self, list_: List[Any], nested_type: Any) -> Result:
+        matches = [self.match(element, nested_type) for element in list_]
+        error_matches = [match for match in matches if match.has_errors]
 
-        # Compare the fields
-        if v_fields - t_fields:
-            errors.append(f"Value has more fields than type: {v_fields - t_fields}")
-        if t_fields - v_fields:
-            errors.append(f"Type has more fields than value: {t_fields - v_fields}")
-        if errors:
-            errors.append(f"Common fields: {t_fields & v_fields}")
+        if error_matches:
+            errors = [f"{len(error_matches)} out of {len(list_)} elements don't match the type."]
+            children = {"first error": error_matches[0]}
+            return Result("list", errors, children)
+        else:
+            return Result("list")
 
-        # Match recursively
-        children = {}
-        for field in v_fields & t_fields:
-            match = match_type(value[field], type_[field])
-            if match.has_errors:
-                children[field] = match
-
-        return Result("dict", errors, children)
-
-    # Lists
-    elif typing_inspect.get_origin(type_) == list:
-        child = None
-
-        if not isinstance(value, list):
-            errors.append("Expected list")
-        elif len(value) > 0:
-            # Typecheck the last value
-            tp = typing_inspect.get_args(type_)[0]
-            match = match_type(value[0], tp)
-            child = match if match.has_errors else None
-
-        return Result("list", errors, child)
-
-    # Union
-    elif typing_inspect.is_union_type(type_):
-        children = {}
+    def match_union(self, value: Any, type_: Any) -> Result:
+        children: Dict[str, Any] = {}
 
         for tp in typing_inspect.get_args(type_):
-            match = match_type(value, tp)
+            match = self.match(value, tp)
             if not match.has_errors:
                 return Result("union")
-            children[str(tp)] = match
+            children[tp.__name__] = match
 
-        errors = ["None of the union types matched"]
+        return Result("union", errors=["None of the union types matched"], children=children)
 
-        return Result("union", errors, children)
+    def match_page(self,
+                   value: Any,
+                   type_: Union[json_types.Page[Any], json_types.CursorPage[Any]]) -> Result:
+        errors: List[str] = []
 
-    # Page or CursorPage
-    elif typing_inspect.get_origin(type_) in (json_types.Page, json_types.CursorPage):
         if typing_inspect.get_origin(type_) == json_types.Page:
             label = "page"
-            page_fields = {"href", "items", "limit", "next", "offset", "previous", "total"}
+            fields = {"href", "items", "limit", "next", "offset", "previous", "total"}
         else:
             label = "cursor_page"
-            page_fields = {"cursors", "href", "items", "limit", "next", "total"}
+            fields = {"cursors", "href", "items", "limit", "next", "total"}
 
         # Basic checks
         if not isinstance(value, dict):
             return Result(label, [f"Expected {label} but {value} is not a dict"])
-        if not "items" in value:
-            return Result(label, [f"Value has no \"items\" field"])
 
         # Compare the fields
-        if value.keys() - page_fields:
-            errors.append(f"Value has more fields than type: {value.keys() - page_fields}")
-        if page_fields - value.keys():
-            errors.append(f"Type has more fields than value: {page_fields - value.keys()}")
+        if value.keys() - fields:
+            errors.append(f"Unrecognized keys: {value.keys() - fields}")
+        if fields - value.keys():
+            errors.append(f"Missing required key: {fields - value.keys()}")
+
         if errors:
-            errors.append(f"Common fields: {page_fields & value.keys()}")
+            return Result(label, errors)
 
-        child = None
-        if len(value["items"]) > 0:
-            # Match the first item
-            nested = typing_inspect.get_args(type_)
-            match = match_type(value["items"][0], nested[0])
+        nested_type = typing_inspect.get_args(type_)[0]
+        nested_match = self.match_list(value["items"], nested_type)
+
+        return Result(label, errors, children=nested_match)
+
+    def match_typeddict(self, value: Dict[str, Any], type_: Any) -> Result:
+        children: Dict[str, "Result"] = {}
+        errors: List[str] = []
+
+        # Every TypedDict T has a parent _T that defines the required keys
+        super_type = getattr(json_types, "_" + type_.__name__)
+
+        everything = typing.get_type_hints(type_)
+        required = typing.get_type_hints(super_type)
+        optional = {key: everything[key] for key in everything.keys() - required.keys()}
+
+        if value.keys() - everything.keys():
+            errors.append(f"Unrecognized keys: {list(value.keys() - everything.keys())}")
+
+        children["required"] = self.match_dict(value, required)
+        if optional:
+            children["optional"] = self.match_dict(value, optional, optional=True)
+
+        return Result(type_.__name__, errors=errors, children=children)
+
+    def match_dict(self,
+                   value: Dict[str, Any],
+                   type_: Dict[str, Any],
+                   optional: bool = False) -> Result:
+        errors: List[str] = []
+        v_fields, t_fields = value.keys(), type_.keys()
+
+        # Compare the fields
+        if not optional and t_fields - v_fields:
+            errors.append(f"Missing required keys: {t_fields - v_fields}")
+
+        # Match recursively
+        children: Dict[str, "Result"] = {}
+        for field in v_fields & t_fields:
+            match = self.match(value[field], type_[field])
             if match.has_errors:
-                child = match
-        return Result(label, errors, child)
+                children[field] = match
 
-    # TypedDicts
-    elif typing_inspect.typed_dict_keys(type_):
-        keys = typing.get_type_hints(type_)
-        return Result(type_.__name__, children=match_type(value, keys))
-
-    else:
-        raise ValueError()
-
-
-def pprint_result(result: Result, tabs: int = 0):
-    print("  " * tabs, f"[{result.label}]")
-    for error in result.error_messages:
-        print("  " * tabs, "-", error)
-    if isinstance(result.children, dict):
-        for field, sub_result in result.children.items():
-            if sub_result.has_errors:
-                print("  " * tabs, field)
-                pprint_result(sub_result, tabs+1)
-    elif result.children is not None:
-        if result.children.has_errors:
-            pprint_result(result.children, tabs+1)
+        return Result("dict", errors, children)
 
 
 def simplify(v):
@@ -158,12 +176,13 @@ def simplify(v):
         return new
 
 
-def typecheck_response(response, method):
+def typecheck_response(response: Any, method: Any):
+    checker = TypeChecker()
     return_type = typing.get_type_hints(method)["return"]
-    match = match_type(response, return_type)
+    match = checker.match(response, return_type)
     if match.has_errors:
         print("Tried to match value to:", return_type)
-        pprint_result(match)
+        match.pprint()
         print("Value doesn't match the type!")
     else:
         print("The value matches the type")
@@ -177,4 +196,6 @@ if __name__ == "__main__":
 
     album = sp.album("4aawyAB9vmqN3uQ7FjRGTy")
     typecheck_response(album, sp.album)
-    pass
+
+    albums = sp.artist_albums("2cbWJP4X5b9sKEDW80uc5r")
+    typecheck_response(albums, sp.artist_albums)
