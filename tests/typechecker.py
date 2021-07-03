@@ -1,14 +1,10 @@
-# -*- coding: utf-8 -*-
-
 import typing
-import unittest
 from typing import Any, Dict, List, Optional, Union
 
-import requests
-import spotipy
 import typing_inspect
-from spotipy import (Spotify, SpotifyClientCredentials, SpotifyException,
-                     json_types)
+from spotipy import json_types
+
+__all__ = ["typecheck_response"]
 
 
 class _TypeCheckingResult:
@@ -133,9 +129,12 @@ class _TypeChecker:
             super_type = getattr(json_types, super_name)
             required = typing.get_type_hints(super_type)
             optional = {key: all_hints[key] for key in all_hints.keys() - required.keys()}
-        else:
+        elif type_.__total__:
             required = all_hints
             optional = {}
+        else:
+            required = {}
+            optional = all_hints
 
         children["required"] = self.match_dict(value, required)
         if optional:
@@ -169,162 +168,6 @@ def typecheck_response(response: Any, method: Any):
     return_type = typing.get_type_hints(method)["return"]
     match = checker.match(response, return_type)
     if match.has_errors:
-        print("Tried to match value to:", return_type.__class__)
+        print("Tried to match value to:", return_type)
         match.pprint()
         assert False, "Value doesn't match the type!"
-
-
-class JSONTypeTest(unittest.TestCase):
-    """
-    These tests require client authentication - provide client credentials
-    using the following environment variables
-
-    ::
-
-        'SPOTIPY_CLIENT_ID'
-        'SPOTIPY_CLIENT_SECRET'
-    """
-
-    playlist = "spotify:user:plamere:playlist:2oCEWyyAPbZp9xhVSxZavx"
-    four_tracks = ["spotify:track:6RtPijgfPKROxEzTHNRiDp",
-                   "spotify:track:7IHOIqZUUInxjVkko181PB",
-                   "4VrWlk8IQxevMvERoX08iC",
-                   "http://open.spotify.com/track/3cySlItpiPiIAzU3NyHCJf"]
-
-    two_tracks = ["spotify:track:6RtPijgfPKROxEzTHNRiDp",
-                  "spotify:track:7IHOIqZUUInxjVkko181PB"]
-
-    other_tracks = ["spotify:track:2wySlB6vMzCbQrRnNGOYKa",
-                    "spotify:track:29xKs5BAHlmlX1u4gzQAbJ",
-                    "spotify:track:1PB7gRWcvefzu7t3LJLUlf"]
-
-    bad_id = 'BAD_ID'
-
-    creep_urn = 'spotify:track:6b2oQwSGFkzsMtQruIWm2p'
-    creep_id = '6b2oQwSGFkzsMtQruIWm2p'
-    creep_url = 'http://open.spotify.com/track/6b2oQwSGFkzsMtQruIWm2p'
-    el_scorcho_urn = 'spotify:track:0Svkvt5I79wficMFgaqEQJ'
-    el_scorcho_bad_urn = 'spotify:track:0Svkvt5I79wficMFgaqEQK'
-    pinkerton_urn = 'spotify:album:04xe676vyiTeYNXw15o9jT'
-    weezer_urn = 'spotify:artist:3jOstUTkEu2JkjvRdBA5Gu'
-    pablo_honey_urn = 'spotify:album:6AZv3m27uyRxi8KyJSfUxL'
-    radiohead_urn = 'spotify:artist:4Z8W4fKeB5YxbusRsdQVPb'
-    angeles_haydn_urn = 'spotify:album:1vAbqAeuJVWNAe7UR00bdM'
-    heavyweight_urn = 'spotify:show:5c26B28vZMN8PG0Nppmn5G'
-    heavyweight_id = '5c26B28vZMN8PG0Nppmn5G'
-    heavyweight_url = 'https://open.spotify.com/show/5c26B28vZMN8PG0Nppmn5G'
-    reply_all_urn = 'spotify:show:7gozmLqbcbr6PScMjc0Zl4'
-    heavyweight_ep1_urn = 'spotify:episode:68kq3bNz6hEuq8NtdfwERG'
-    heavyweight_ep1_id = '68kq3bNz6hEuq8NtdfwERG'
-    heavyweight_ep1_url = 'https://open.spotify.com/episode/68kq3bNz6hEuq8NtdfwERG'
-    reply_all_ep1_urn = 'spotify:episode:1KHjbpnmNpFmNTczQmTZlR'
-
-    @classmethod
-    def setUpClass(self):
-        self.spotify = Spotify(
-            auth_manager=SpotifyClientCredentials()
-        )
-        self.spotify.trace = False
-
-    def test_audio_analysis(self):
-        result = self.spotify.audio_analysis(self.four_tracks[0])
-        typecheck_response(result, self.spotify.audio_analysis)
-
-    def test_audio_features(self):
-        results = self.spotify.audio_features(self.four_tracks)
-        typecheck_response(results, self.spotify.audio_features)
-
-    def test_recommendations(self):
-        results = self.spotify.recommendations(
-            seed_tracks=self.four_tracks,
-            min_danceability=0,
-            max_loudness=0,
-            target_popularity=50)
-        typecheck_response(results, self.spotify.recommendations)
-
-    def test_artist_urn(self):
-        artist = self.spotify.artist(self.radiohead_urn)
-        typecheck_response(artist, self.spotify.artist)
-
-    def test_artists(self):
-        results = self.spotify.artists([self.weezer_urn, self.radiohead_urn])
-        typecheck_response(results, self.spotify.artists)
-
-    def test_album_urn(self):
-        album = self.spotify.album(self.pinkerton_urn)
-        typecheck_response(album, self.spotify.album)
-
-    def test_album_tracks(self):
-        results = self.spotify.album_tracks(self.pinkerton_urn)
-        typecheck_response(results, self.spotify.album_tracks)
-
-    def test_albums(self):
-        results = self.spotify.albums([self.pinkerton_urn, self.pablo_honey_urn])
-        typecheck_response(results, self.spotify.albums)
-
-    def test_track_urn(self):
-        track = self.spotify.track(self.creep_urn)
-        typecheck_response(track, self.spotify.track)
-
-    def test_tracks(self):
-        results = self.spotify.tracks([self.creep_url, self.el_scorcho_urn])
-        typecheck_response(results, self.spotify.tracks)
-
-    def test_artist_top_tracks(self):
-        results = self.spotify.artist_top_tracks(self.weezer_urn)
-        typecheck_response(results, self.spotify.artist_top_tracks)
-
-    def test_artist_related_artists(self):
-        results = self.spotify.artist_related_artists(self.weezer_urn)
-        typecheck_response(results, self.spotify.artist_related_artists)
-
-    def test_artist_search(self):
-        results = self.spotify.search(q='weezer', type='artist')
-        typecheck_response(results, self.spotify.search)
-
-    def test_artist_search_with_market(self):
-        results = self.spotify.search(q='weezer', type='artist', market='GB')
-        typecheck_response(results, self.spotify.search)
-
-    def test_artist_albums(self):
-        results = self.spotify.artist_albums(self.weezer_urn)
-        typecheck_response(results, self.spotify.artist_albums)
-
-    def test_album_search(self):
-        results = self.spotify.search(q='weezer pinkerton', type='album')
-        typecheck_response(results, self.spotify.search)
-
-    def test_track_search(self):
-        results = self.spotify.search(q='el scorcho weezer', type='track')
-        typecheck_response(results, self.spotify.search)
-
-    def test_user(self):
-        user = self.spotify.user(user='plamere')
-        typecheck_response(user, self.spotify.user)
-
-    def test_show_urn(self):
-        show = self.spotify.show(self.heavyweight_urn, market="US")
-        typecheck_response(show, self.spotify.show)
-
-    def test_shows(self):
-        results = self.spotify.shows([self.heavyweight_urn, self.reply_all_urn], market="US")
-        typecheck_response(results, self.spotify.shows)
-
-    def test_show_episodes(self):
-        results = self.spotify.show_episodes(self.heavyweight_urn, market="US")
-        typecheck_response(results, self.spotify.show_episodes)
-
-    def test_episode_urn(self):
-        episode = self.spotify.episode(self.heavyweight_ep1_urn, market="US")
-        typecheck_response(episode, self.spotify.episode)
-
-    def test_episodes(self):
-        results = self.spotify.episodes(
-            [self.heavyweight_ep1_urn, self.reply_all_ep1_urn],
-            market="US"
-        )
-        typecheck_response(results, self.spotify.episodes)
-
-    def test_available_markets(self):
-        markets = self.spotify.available_markets()
-        typecheck_response(markets, self.spotify.available_markets)
