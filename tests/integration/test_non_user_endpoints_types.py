@@ -249,3 +249,82 @@ class JSONTypeTest(unittest.TestCase):
     def test_artists(self):
         results = self.spotify.artists([self.weezer_urn, self.radiohead_urn])
         typecheck_response(results, self.spotify.artists)
+
+    def test_album_urn(self):
+        album = self.spotify.album(self.pinkerton_urn)
+        typecheck_response(album, self.spotify.album)
+
+    def test_album_tracks(self):
+        results = self.spotify.album_tracks(self.pinkerton_urn)
+        typecheck_response(results, self.spotify.album_tracks)
+
+    def test_albums(self):
+        results = self.spotify.albums([self.pinkerton_urn, self.pablo_honey_urn])
+        typecheck_response(results, self.spotify.albums)
+
+    def test_track_urn(self):
+        track = self.spotify.track(self.creep_urn)
+        typecheck_response(track, self.spotify.track)
+
+    def test_tracks(self):
+        results = self.spotify.tracks([self.creep_url, self.el_scorcho_urn])
+        typecheck_response(results, self.spotify.tracks)
+
+    def test_artist_top_tracks(self):
+        results = self.spotify.artist_top_tracks(self.weezer_urn)
+        typecheck_response(results, self.spotify.artist_top_tracks)
+
+    def test_artist_related_artists(self):
+        results = self.spotify.artist_related_artists(self.weezer_urn)
+        typecheck_response(results, self.spotify.artist_related_artists)
+
+    def test_artist_search(self):
+        results = self.spotify.search(q='weezer', type='artist')
+        typecheck_response(results, self.spotify.search)
+
+    def test_artist_search_with_market(self):
+        results = self.spotify.search(q='weezer', type='artist', market='GB')
+        typecheck_response(results, self.spotify.search)
+
+    def test_artist_albums(self):
+        results = self.spotify.artist_albums(self.weezer_urn)
+        typecheck_response(results, self.spotify.artist_albums)
+
+    def test_album_search(self):
+        results = self.spotify.search(q='weezer pinkerton', type='album')
+        typecheck_response(results, self.spotify.search)
+
+    def test_track_search(self):
+        results = self.spotify.search(q='el scorcho weezer', type='track')
+        typecheck_response(results, self.spotify.search)
+
+    def test_user(self):
+        user = self.spotify.user(user='plamere')
+        typecheck_response(user, self.spotify.user)
+
+    def test_show_urn(self):
+        show = self.spotify.show(self.heavyweight_urn, market="US")
+        typecheck_response(show, self.spotify.show)
+
+    def test_shows(self):
+        results = self.spotify.shows([self.heavyweight_urn, self.reply_all_urn], market="US")
+        typecheck_response(results, self.spotify.shows)
+
+    def test_show_episodes(self):
+        results = self.spotify.show_episodes(self.heavyweight_urn, market="US")
+        typecheck_response(results, self.spotify.show_episodes)
+
+    def test_episode_urn(self):
+        episode = self.spotify.episode(self.heavyweight_ep1_urn, market="US")
+        typecheck_response(episode, self.spotify.episode)
+
+    def test_episodes(self):
+        results = self.spotify.episodes(
+            [self.heavyweight_ep1_urn, self.reply_all_ep1_urn],
+            market="US"
+        )
+        typecheck_response(results, self.spotify.episodes)
+
+    def test_available_markets(self):
+        markets = self.spotify.available_markets()
+        typecheck_response(markets, self.spotify.available_markets)
