@@ -1386,7 +1386,7 @@ class Spotify(object):
         seed_tracks: Optional[List[str]] = None,
         limit: int = 20,
         country: Optional[str] = None,
-        **kwargs: Dict[str, Any]
+        **kwargs: Any
     ) -> Recommendations:
         """ Get a list of recommended tracks for one to five seeds.
             (at least one of `seed_artists`, `seed_tracks` and `seed_genres`
