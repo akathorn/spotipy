@@ -1,10 +1,10 @@
+import textwrap
 import typing
 from typing import Any, Dict, List, Optional, Union
 
 import typing_inspect
-from spotipy import json_types
 
-__all__ = ["typecheck_response"]
+from spotipy import json_types
 
 
 class _TypeCheckingResult:
@@ -23,48 +23,77 @@ class _TypeCheckingResult:
         else:
             self.has_errors = False
 
-    def pprint(self, tabs: int = 0):
-        print("  " * tabs, f"[{self.label}]")
+    def pprint(self, spaces: int = 0) -> str:
+        result = [f"[{self.label}]"]
+
         for error in self.error_messages:
-            print("  " * tabs, "-", error)
+            result.append(f"  * {error}")
+
         if isinstance(self.children, dict):
-            for field, sub_result in self.children.items():
-                if sub_result.has_errors:
-                    print("  " * tabs, field)
-                    sub_result.pprint(tabs+1)
+            error_children = [
+                (field, subresult) for field, subresult in self.children.items()
+                if subresult.has_errors
+            ]
+            if error_children:
+                result.append("  {")
+                for field, subresult in error_children:
+                    result.append(f"    {field}:")
+                    result.append(subresult.pprint(6))
+                result.append("  }")
         elif self.children is not None:
             if self.children.has_errors:
-                self.children.pprint(tabs+1)
+                result.append(self.children.pprint(2))
+
+        return textwrap.indent("\n".join(result), " " * spaces)
 
 
-class _TypeChecker:
-    def __init__(self) -> None:
-        pass
-
-    def match(self, value: Any, type_: Any) -> _TypeCheckingResult:
+class TypeChecker:
+    def typecheck(self, value: Any, type_: Any) -> _TypeCheckingResult:
+        # Primitives
         if type_ in [int, float, str, bool]:
-            return self.match_primitive(value, type_)
+            return self._match_primitive(value, type_)
+        # Dicts
         elif isinstance(value, dict) and isinstance(type_, dict):
-            return self.match_dict(value, type_)
+            return self._match_dict(value, type_)
+        # Lists
         elif typing_inspect.get_origin(type_) == list or typing_inspect.get_origin(type_) == List:
-            return self.match_list(value, typing_inspect.get_args(type_)[0])
+            return self._match_list(value, typing_inspect.get_args(type_)[0])
+        # Unions
         elif typing_inspect.is_union_type(type_):
-            return self.match_union(value, type_)
+            return self._match_union(value, type_)
+        # Unions
+        elif typing_inspect.is_optional_type(type_):
+            return self._match_optional(value, type_)
+        # Pages and cursors
         elif typing_inspect.get_origin(type_) in (json_types.Page, json_types.CursorPage):
-            return self.match_page(value, type_)
+            return self._match_page(value, type_)
+        # TypedDicts
         elif typing_inspect.typed_dict_keys(type_):
-            return self.match_typeddict(value, type_)
+            return self._match_typeddict(value, type_)
         else:
             raise ValueError()
 
-    def match_primitive(self, value: Union[int, float, str, bool], type_: Any) -> _TypeCheckingResult:
+    def compare_with_signature(self, value: Any, function: Any):
+        return_type = typing.get_type_hints(function)["return"]
+        return self.typecheck(value, return_type)
+
+    def _match_primitive(self, value: Any, type_: Any) -> _TypeCheckingResult:
         if not isinstance(value, type_):
-            _TypeCheckingResult(
+            return _TypeCheckingResult(
                 "primitive", [f"{value}: expected type {type_} but got {type(value)}"])
         return _TypeCheckingResult("primitive")
 
-    def match_list(self, list_: List[Any], nested_type: Any) -> _TypeCheckingResult:
-        matches = [self.match(element, nested_type) for element in list_]
+    def _match_primitive(self, value: Union[int, float, str, bool], type_: Any) -> _TypeCheckingResult:
+        if not isinstance(value, type_):
+            return _TypeCheckingResult(
+                "primitive", [f"{value}: expected type {type_} but got {type(value)}"])
+        return _TypeCheckingResult("primitive")
+
+    def _match_list(self, list_: List[Any], nested_type: Any) -> _TypeCheckingResult:
+        if not isinstance(list_, list):
+            return _TypeCheckingResult("list", ["The value is not a list"])
+
+        matches = [self.typecheck(element, nested_type) for element in list_]
         error_matches = [match for match in matches if match.has_errors]
 
         if error_matches:
@@ -74,20 +103,31 @@ class _TypeChecker:
         else:
             return _TypeCheckingResult("list")
 
-    def match_union(self, value: Any, type_: Any) -> _TypeCheckingResult:
+    def _match_union(self, value: Any, type_: Any) -> _TypeCheckingResult:
         children: Dict[str, Any] = {}
 
         for tp in typing_inspect.get_args(type_):
-            match = self.match(value, tp)
+            match = self.typecheck(value, tp)
             if not match.has_errors:
                 return _TypeCheckingResult("union")
             children[tp.__name__] = match
 
         return _TypeCheckingResult("union", errors=["None of the union types matched"], children=children)
 
-    def match_page(self,
-                   value: Any,
-                   type_: Union[json_types.Page[Any], json_types.CursorPage[Any]]) -> _TypeCheckingResult:
+    def _match_optional(self, value: Any, type_: Any) -> _TypeCheckingResult:
+        if value is None:
+            return _TypeCheckingResult("optional")
+
+        nested = typing_inspect.get_args(type_)[0]
+        match = self.typecheck(value, nested)
+        if match.has_errors:
+            return _TypeCheckingResult("optional", children=match)
+        else:
+            return _TypeCheckingResult("optional")
+
+    def _match_page(self,
+                    value: Any,
+                    type_: Union[json_types.Page[Any], json_types.CursorPage[Any]]) -> _TypeCheckingResult:
         errors: List[str] = []
 
         if typing_inspect.get_origin(type_) == json_types.Page:
@@ -111,11 +151,11 @@ class _TypeChecker:
             return _TypeCheckingResult(label, errors)
 
         nested_type = typing_inspect.get_args(type_)[0]
-        nested_match = self.match_list(value["items"], nested_type)
+        nested_match = self._match_list(value["items"], nested_type)
 
         return _TypeCheckingResult(label, errors, children=nested_match)
 
-    def match_typeddict(self, value: Dict[str, Any], type_: Any) -> _TypeCheckingResult:
+    def _match_typeddict(self, value: Dict[str, Any], type_: Any) -> _TypeCheckingResult:
         children: Dict[str, "_TypeCheckingResult"] = {}
         errors: List[str] = []
 
@@ -136,16 +176,16 @@ class _TypeChecker:
             required = {}
             optional = all_hints
 
-        children["required"] = self.match_dict(value, required)
+        children["required"] = self._match_dict(value, required)
         if optional:
-            children["optional"] = self.match_dict(value, optional, optional=True)
+            children["optional"] = self._match_dict(value, optional, optional=True)
 
         return _TypeCheckingResult(type_.__name__, errors=errors, children=children)
 
-    def match_dict(self,
-                   value: Dict[str, Any],
-                   type_: Dict[str, Any],
-                   optional: bool = False) -> _TypeCheckingResult:
+    def _match_dict(self,
+                    value: Dict[str, Any],
+                    type_: Dict[str, Any],
+                    optional: bool = False) -> _TypeCheckingResult:
         errors: List[str] = []
         v_fields, t_fields = value.keys(), type_.keys()
 
@@ -156,7 +196,7 @@ class _TypeChecker:
         # Match recursively
         children: Dict[str, "_TypeCheckingResult"] = {}
         for field in v_fields & t_fields:
-            match = self.match(value[field], type_[field])
+            match = self.typecheck(value[field], type_[field])
             if match.has_errors:
                 children[field] = match
 
