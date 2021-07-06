@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import os
 import unittest
 from typing import Any
@@ -7,7 +6,16 @@ from typing import Any
 from spotipy import CLIENT_CREDS_ENV_VARS as CCEV
 from spotipy import Spotify, SpotifyClientCredentials, SpotifyOAuth
 from tests import helpers
-from tests.typechecker import TypeChecker
+
+try:
+    from tests.typechecker import TypeChecker
+except ImportError as err:
+    # typing_inspect is an experimental module, so it shouldn't be a depency of Spotipy since it is
+    # only going to be used in these tests. If it is not installed, we just skip.
+    if err.name == "typing_inspect":
+        raise unittest.SkipTest("'typecheck_inspect' module is required to run type tests.")
+    else:
+        raise err
 
 
 class _TypeTest(unittest.TestCase):

@@ -2,7 +2,11 @@ import textwrap
 import typing
 from typing import Any, Dict, List, Optional, Union
 
-import typing_inspect
+try:
+    import typing_inspect
+except ImportError as err:
+    err.msg = "Module 'typing_inspect' is required to use the type-checker"
+    raise err
 
 from spotipy import json_types
 
@@ -49,25 +53,16 @@ class _TypeCheckingResult:
 
 class TypeChecker:
     def typecheck(self, value: Any, type_: Any) -> _TypeCheckingResult:
-        # Primitives
         if type_ in [int, float, str, bool]:
             return self._match_primitive(value, type_)
-        # Dicts
         elif isinstance(value, dict) and isinstance(type_, dict):
             return self._match_dict(value, type_)
-        # Lists
         elif typing_inspect.get_origin(type_) == list or typing_inspect.get_origin(type_) == List:
             return self._match_list(value, typing_inspect.get_args(type_)[0])
-        # Unions
         elif typing_inspect.is_union_type(type_):
             return self._match_union(value, type_)
-        # Unions
-        elif typing_inspect.is_optional_type(type_):
-            return self._match_optional(value, type_)
-        # Pages and cursors
         elif typing_inspect.get_origin(type_) in (json_types.Page, json_types.CursorPage):
             return self._match_page(value, type_)
-        # TypedDicts
         elif typing_inspect.typed_dict_keys(type_):
             return self._match_typeddict(value, type_)
         else:
@@ -76,12 +71,6 @@ class TypeChecker:
     def compare_with_signature(self, value: Any, function: Any):
         return_type = typing.get_type_hints(function)["return"]
         return self.typecheck(value, return_type)
-
-    def _match_primitive(self, value: Any, type_: Any) -> _TypeCheckingResult:
-        if not isinstance(value, type_):
-            return _TypeCheckingResult(
-                "primitive", [f"{value}: expected type {type_} but got {type(value)}"])
-        return _TypeCheckingResult("primitive")
 
     def _match_primitive(self, value: Union[int, float, str, bool], type_: Any) -> _TypeCheckingResult:
         if not isinstance(value, type_):
@@ -113,17 +102,6 @@ class TypeChecker:
             children[tp.__name__] = match
 
         return _TypeCheckingResult("union", errors=["None of the union types matched"], children=children)
-
-    def _match_optional(self, value: Any, type_: Any) -> _TypeCheckingResult:
-        if value is None:
-            return _TypeCheckingResult("optional")
-
-        nested = typing_inspect.get_args(type_)[0]
-        match = self.typecheck(value, nested)
-        if match.has_errors:
-            return _TypeCheckingResult("optional", children=match)
-        else:
-            return _TypeCheckingResult("optional")
 
     def _match_page(self,
                     value: Any,
@@ -203,11 +181,16 @@ class TypeChecker:
         return _TypeCheckingResult("dict", errors, children)
 
 
-def typecheck_response(response: Any, method: Any):
-    checker = _TypeChecker()
-    return_type = typing.get_type_hints(method)["return"]
-    match = checker.match(response, return_type)
-    if match.has_errors:
-        print("Tried to match value to:", return_type)
-        match.pprint()
-        assert False, "Value doesn't match the type!"
+if __name__ == "__main__":
+    import spotipy
+    from spotipy.oauth2 import SpotifyOAuth
+
+    typechecker = TypeChecker()
+
+    sp = spotipy.Spotify(auth_manager=SpotifyOAuth())
+
+    album = sp.album("6oZo4eplmeaHSyEWO1tESm")
+    print(typechecker.compare_with_signature(album, sp.track).pprint())
+
+    track = sp.track("5yYDd5nBjyrOkiaDcQ58uf")
+    print(typechecker.compare_with_signature(track, sp.album).pprint())
