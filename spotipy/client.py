@@ -18,7 +18,9 @@ from typing_extensions import Literal
 from spotipy.exceptions import SpotifyException
 from spotipy.json_types import (Album, AlbumsResponse, Artist, ArtistsResponse,
                                 AudioFeatures, AvailableMarketsResponse,
-                                Category, CurrentlyPlayingContext, CursorPage,
+                                CategoriesPlaylistsResponse,
+                                CategoriesResponse, Category,
+                                CurrentlyPlayingContext, CursorPage,
                                 DevicesResponse, Episode, EpisodesResponse,
                                 FeaturedPlaylistsResponse,
                                 FollowedArtistsResponse, Image,
@@ -29,7 +31,8 @@ from spotipy.json_types import (Album, AlbumsResponse, Artist, ArtistsResponse,
                                 SavedShow, SavedTrack, SearchResponse, Show,
                                 ShowsResponse, SimplifiedAlbum,
                                 SimplifiedEpisode, SimplifiedPlaylist,
-                                SnapshotId, Track, TracksResponse)
+                                SimplifiedTrack, SnapshotId, Track,
+                                TracksResponse)
 # from spotipy.json_types import *
 from spotipy.oauth2 import SpotifyAuthBase
 
@@ -433,7 +436,7 @@ class Spotify(object):
 
     # TODO: the documentation is not clear about the return type
     def album_tracks(self, album_id: str, limit: int = 50,
-                     offset: int = 0, market: Optional[str] = None):
+                     offset: int = 0, market: Optional[str] = None) -> Page[SimplifiedTrack]:
         """ Get Spotify catalog information about an album's tracks
 
             Parameters:
@@ -524,7 +527,7 @@ class Spotify(object):
         trid = self._get_id("episode", episode_id)
         return self._get("episodes/" + trid, market=market)
 
-    def episodes(self, episodes: List[Episode], market: Optional[str] = None) -> EpisodesResponse:
+    def episodes(self, episodes: List[str], market: Optional[str] = None) -> EpisodesResponse:
         """ returns a list of episodes given the episode IDs, URIs, or URLs
 
             Parameters:
@@ -752,7 +755,7 @@ class Spotify(object):
     def playlist_change_details(
         self,
         playlist_id: str,
-        name: str,
+        name: Optional[str] = None,
         public: bool = True,
         collaborative: bool = False,
         description: str = ""
@@ -1330,7 +1333,7 @@ class Spotify(object):
         )
 
     def categories(self, country: Optional[str] = None, locale: Optional[str]
-                   = None, limit: int = 20, offset: int = 0) -> Page[Category]:
+                   = None, limit: int = 20, offset: int = 0) -> CategoriesResponse:
         """ Get a list of categories
 
             Parameters:
@@ -1357,7 +1360,7 @@ class Spotify(object):
     def category_playlists(
         self, category_id: Optional[str] = None, country: Optional[str] = None, limit: int = 20,
         offset: int = 0
-    ) -> Page[SimplifiedPlaylist]:
+    ) -> CategoriesPlaylistsResponse:
         """ Get a list of playlists for a specific Spotify category
 
             Parameters:

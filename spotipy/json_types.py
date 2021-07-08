@@ -1,5 +1,5 @@
 import sys
-from typing import Any, Generic, List, Mapping, TypeVar, overload
+from typing import Any, Generic, List, Mapping, Optional, TypeVar, overload
 
 if sys.version_info >= (3, 8):
     from typing import Literal, TypedDict
@@ -9,18 +9,25 @@ else:
 _T = TypeVar("_T", covariant=True)
 
 
-TokenInfo = TypedDict("Token", {
-    "access_token": str,
-    "token_type": str,
-    "scope": str,
-    "expires_in": int,
-    "refresh_token": str,
-    "expires_at": int
-})
+class _TokenInfo(TypedDict):
+    # Required fields
+    access_token: str
+    token_type: str
+    expires_in: int
+    expires_at: int
+
+
+class TokenInfo(_TokenInfo):
+    # Optional fields
+    scope: str
+    refresh_token: str
 
 
 # Paging objects
 class Page(Generic[_T], Mapping[str, Any]):
+    def __new__(cls, *args, **kwargs):  # type: ignore
+        raise TypeError("Page objects can't be instantiated")
+
     # autopep8: off
     @overload
     def __getitem__(self, k: Literal["href"]) -> str: ...
@@ -42,6 +49,9 @@ class Page(Generic[_T], Mapping[str, Any]):
 
 
 class CursorPage(Generic[_T], Mapping[str, Any]):
+    def __new__(cls, *args, **kwargs):  # type: ignore
+        raise TypeError("CursorPage objects can't be instantiated")
+
     # autopep8: off
     @overload
     def __getitem__(self, k: Literal["cursors"]) -> "Cursor": ...
@@ -64,16 +74,8 @@ class CursorPage(Generic[_T], Mapping[str, Any]):
 TracksResponse = TypedDict("TracksResponse", tracks=List["Track"])
 ArtistsResponse = TypedDict("ArtistsResponse", artists=List["Artist"])
 AlbumsResponse = TypedDict("AlbumsResponse", albums=List["Album"])
-ShowsResponse = TypedDict("ShowsResponse", albums=List["SimplifiedShow"])
-EpisodesResponse = TypedDict("EpisodesResponse", albums=List["Episode"])
-SearchResponse = TypedDict("SearchResponse",
-                           artists=Page["Artist"],
-                           albums=Page["SimplifiedAlbum"],
-                           tracks=Page["Track"],
-                           playlists=Page["SimplifiedPlaylist"],
-                           shows=Page["SimplifiedShow"],
-                           episodes=Page["SimplifiedEpisode"],
-                           )
+ShowsResponse = TypedDict("ShowsResponse", shows=List["SimplifiedShow"])
+EpisodesResponse = TypedDict("EpisodesResponse", episodes=List["Episode"])
 SnapshotId = TypedDict("SnapshotId", snapshot_id=str)
 FollowedArtistsResponse = TypedDict("FollowedArtistsResponse", artists=CursorPage["Artist"])
 FeaturedPlaylistsResponse = TypedDict("FeaturedPlaylistsResponse",
@@ -87,7 +89,18 @@ NewReleasesResponse = TypedDict("NewReleasesResponse",
 RecommendationGenresResponse = TypedDict("RecommendationGenresResponse", genres=List[str])
 DevicesResponse = TypedDict("DevicesResponse", devices=List["Device"])
 AvailableMarketsResponse = TypedDict("AvailableMarketsResponse", markets=List[str])
+CategoriesResponse = TypedDict("CategoriesResponse", categories=Page["Category"])
+CategoriesPlaylistsResponse = TypedDict(
+    "CategoriesPlaylistsResponse", playlists=Page["SimplifiedPlaylist"])
 
+
+class SearchResponse(TypedDict, total=False):
+    artists: Page["Artist"]
+    albums: Page["SimplifiedAlbum"]
+    tracks: Page["Track"]
+    playlists: Page["SimplifiedPlaylist"]
+    shows: Page["SimplifiedShow"]
+    episodes: Page["SimplifiedEpisode"]
 
 # JSON objects
 # TODO: Missing AudioAnalysisObject, not documented
@@ -95,11 +108,12 @@ AvailableMarketsResponse = TypedDict("AvailableMarketsResponse", markets=List[st
 #       one by one
 # TODO: Some calls can return Episodes or Tracks, but right now they are
 # only typed as returning Tracks
+
+
 class _Album(TypedDict):
     # Required keys
     album_type: str
-    artists: List["Artist"]
-    available_markets: List[str]
+    artists: List["SimplifiedArtist"]
     copyrights: List["Copyright"]
     external_ids: "ExternalId"
     external_urls: "ExternalUrl"
@@ -112,7 +126,6 @@ class _Album(TypedDict):
     popularity: int
     release_date: str
     release_date_precision: str
-    restrictions: "AlbumRestriction"
     total_tracks: int
     tracks: 'Page[SimplifiedTrack]'
     type: str
@@ -121,7 +134,8 @@ class _Album(TypedDict):
 
 class Album(_Album, total=False):
     # Possibly missing keys
-    ...
+    restrictions: "AlbumRestriction"
+    available_markets: List[str]
 
 
 class _AlbumRestriction(TypedDict):
@@ -319,13 +333,11 @@ class _Episode(TypedDict):
     id: str
     images: List["Image"]
     is_externally_hosted: bool
-    is_playable: bool
     language: str
     languages: List[str]
     name: str
     release_date: str
     release_date_precision: str
-    restrictions: "EpisodeRestriction"
     resume_point: "ResumePoint"
     show: "SimplifiedShow"
     type: str
@@ -334,7 +346,8 @@ class _Episode(TypedDict):
 
 class Episode(_Episode, total=False):
     # Possibly missing keys
-    ...
+    restrictions: "EpisodeRestriction"
+    is_playable: bool
 
 
 class _EpisodeRestriction(TypedDict):
@@ -371,14 +384,14 @@ class ExplicitContentSettings(_ExplicitContentSettings, total=False):
 
 class _ExternalId(TypedDict):
     # Required keys
-    ean: str
-    isrc: str
-    upc: str
+    ...
 
 
 class ExternalId(_ExternalId, total=False):
     # Possibly missing keys
-    ...
+    ean: str
+    isrc: str
+    upc: str
 
 
 class _ExternalUrl(TypedDict):
@@ -393,7 +406,7 @@ class ExternalUrl(_ExternalUrl, total=False):
 
 class _Followers(TypedDict):
     # Required keys
-    href: str
+    href: Optional[str]
     total: int
 
 
@@ -404,9 +417,9 @@ class Followers(_Followers, total=False):
 
 class _Image(TypedDict):
     # Required keys
-    height: int
+    height: Optional[int]
     url: str
-    width: int
+    width: Optional[int]
 
 
 class Image(_Image, total=False):
@@ -620,7 +633,6 @@ class SavedTrack(_SavedTrack, total=False):
 
 class _Show(TypedDict):
     # Required keys
-    available_markets: List[str]
     copyrights: List["Copyright"]
     description: str
     episodes: List["SimplifiedEpisode"]
@@ -641,15 +653,13 @@ class _Show(TypedDict):
 
 class Show(_Show, total=False):
     # Possibly missing keys
-    ...
+    available_markets: List[str]
 
 
 class _SimplifiedAlbum(TypedDict):
     # Required keys
-    album_group: str
     album_type: str
     artists: List["SimplifiedArtist"]
-    available_markets: List[str]
     external_urls: "ExternalUrl"
     href: str
     id: str
@@ -657,7 +667,6 @@ class _SimplifiedAlbum(TypedDict):
     name: str
     release_date: str
     release_date_precision: str
-    restrictions: "AlbumRestriction"
     total_tracks: int
     type: str
     uri: str
@@ -665,7 +674,9 @@ class _SimplifiedAlbum(TypedDict):
 
 class SimplifiedAlbum(_SimplifiedAlbum, total=False):
     # Possibly missing keys
-    ...
+    album_group: str
+    restrictions: "AlbumRestriction"
+    available_markets: List[str]
 
 
 class _SimplifiedArtist(TypedDict):
@@ -695,7 +706,6 @@ class _SimplifiedEpisode(TypedDict):
     id: str
     images: List["Image"]
     is_externally_hosted: bool
-    is_playable: bool
     language: str
     languages: List[str]
     name: str
@@ -709,7 +719,7 @@ class _SimplifiedEpisode(TypedDict):
 
 class SimplifiedEpisode(_SimplifiedEpisode, total=False):
     # Possibly missing keys
-    ...
+    is_playable: bool
 
 
 class _SimplifiedPlaylist(TypedDict):
@@ -736,7 +746,6 @@ class SimplifiedPlaylist(_SimplifiedPlaylist, total=False):
 
 class _SimplifiedShow(TypedDict):
     # Required keys
-    available_markets: List[str]
     copyrights: List["Copyright"]
     description: str
     explicit: bool
@@ -756,13 +765,12 @@ class _SimplifiedShow(TypedDict):
 
 class SimplifiedShow(_SimplifiedShow, total=False):
     # Possibly missing keys
-    ...
+    available_markets: List[str]
 
 
 class _SimplifiedTrack(TypedDict):
     # Required keys
     artists: List["SimplifiedArtist"]
-    available_markets: List[str]
     disc_number: int
     duration_ms: int
     explicit: bool
@@ -770,11 +778,8 @@ class _SimplifiedTrack(TypedDict):
     href: str
     id: str
     is_local: bool
-    is_playable: bool
-    linked_from: "LinkedTrack"
     name: str
-    preview_url: str
-    restrictions: "TrackRestriction"
+    preview_url: Optional[str]
     track_number: int
     type: str
     uri: str
@@ -782,14 +787,16 @@ class _SimplifiedTrack(TypedDict):
 
 class SimplifiedTrack(_SimplifiedTrack, total=False):
     # Possibly missing keys
-    ...
+    linked_from: "LinkedTrack"
+    restrictions: "TrackRestriction"
+    is_playable: bool
+    available_markets: List[str]
 
 
 class _Track(TypedDict):
     # Required keys
     album: "SimplifiedAlbum"
-    artists: List["Artist"]
-    available_markets: List[str]
+    artists: List["SimplifiedArtist"]
     disc_number: int
     duration_ms: int
     explicit: bool
@@ -798,12 +805,9 @@ class _Track(TypedDict):
     href: str
     id: str
     is_local: bool
-    is_playable: bool
-    linked_from: "LinkedTrack"
     name: str
     popularity: int
-    preview_url: str
-    restrictions: "TrackRestriction"
+    preview_url: Optional[str]
     track_number: int
     type: str
     uri: str
@@ -811,7 +815,10 @@ class _Track(TypedDict):
 
 class Track(_Track, total=False):
     # Possibly missing keys
-    ...
+    linked_from: "LinkedTrack"
+    restrictions: "TrackRestriction"
+    is_playable: bool
+    available_markets: List[str]
 
 
 class _TrackRestriction(TypedDict):
