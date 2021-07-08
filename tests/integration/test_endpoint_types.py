@@ -1,4 +1,9 @@
 # -*- coding: utf-8 -*-
+""" Tests that the values returned from API calls to Spotify match the types defined in Spotipy.
+
+It requires the module typing_inspect to be manually installed. If it can't be found the whole
+module will be skipped and won't be discovered by unittest.
+"""
 import os
 import unittest
 from typing import Any

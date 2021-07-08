@@ -27,8 +27,10 @@ class _TypeCheckingResult:
         else:
             self.has_errors = False
 
-    def pprint(self, spaces: int = 0) -> str:
-        result = [f"[{self.label}]"]
+    def pprint(self, spaces: int = 0, first: bool = True) -> str:
+        result: List[str] = []
+        if first:
+            result.append(f"<{self.label}>")
 
         for error in self.error_messages:
             result.append(f"  * {error}")
@@ -41,8 +43,8 @@ class _TypeCheckingResult:
             if error_children:
                 result.append("  {")
                 for field, subresult in error_children:
-                    result.append(f"    {field}:")
-                    result.append(subresult.pprint(6))
+                    sub = subresult.pprint(4, first=False)
+                    result.append(f"    {field} [{subresult.label}]:\n{sub}")
                 result.append("  }")
         elif self.children is not None:
             if self.children.has_errors:
@@ -53,18 +55,37 @@ class _TypeCheckingResult:
 
 class TypeChecker:
     def typecheck(self, value: Any, type_: Any) -> _TypeCheckingResult:
-        if type_ in [int, float, str, bool]:
+        # Primitives
+        if type_ in [int, float, str, bool, type(None)]:
             return self._match_primitive(value, type_)
+
+        # Dicts
         elif isinstance(value, dict) and isinstance(type_, dict):
             return self._match_dict(value, type_)
+
+        # Lists
         elif typing_inspect.get_origin(type_) == list or typing_inspect.get_origin(type_) == List:
             return self._match_list(value, typing_inspect.get_args(type_)[0])
+
+        # Union
         elif typing_inspect.is_union_type(type_):
             return self._match_union(value, type_)
+
+        # Optional is actually a Union of a type and None, I don't know if the situation below is
+        # ever going to happen
+        # # Optional
+        # elif typing_inspect.is_optional_type(type_):
+        #     return self._match_optional(value, type_)
+
+        # Page and CursorPage
         elif typing_inspect.get_origin(type_) in (json_types.Page, json_types.CursorPage):
             return self._match_page(value, type_)
+
+        # TypedDict
         elif typing_inspect.typed_dict_keys(type_):
             return self._match_typeddict(value, type_)
+
+        # Unexpected type
         else:
             raise ValueError()
 
@@ -102,6 +123,17 @@ class TypeChecker:
             children[tp.__name__] = match
 
         return _TypeCheckingResult("union", errors=["None of the union types matched"], children=children)
+
+    # def _match_optional(self, value: Any, type_: Any) -> _TypeCheckingResult:
+    #     nested = typing_inspect.get_args(type_)[0]
+    #     if value is None:
+    #         return _TypeCheckingResult("optional")
+
+    #     match = self.typecheck(value, nested)
+    #     if match.has_errors:
+    #         return _TypeCheckingResult("optional", children=match)
+    #     else:
+    #         return _TypeCheckingResult("optional")
 
     def _match_page(self,
                     value: Any,
